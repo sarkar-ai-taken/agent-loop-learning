@@ -1,0 +1,19 @@
+{
+  "customCommands": [
+    {
+      "name": "review-agent",
+      "description": "Audit an agent design against all 9 best-practice dimensions. Paste your agent code or design after running this command.",
+      "prompt": "You are an expert agent systems reviewer. Read all 9 best-practice docs in the `best-practices/` folder of this repo: 01-multi-agent-orchestration.md, 02-worker-prompting.md, 03-context-and-memory.md, 04-tool-design.md, 05-verification-and-testing.md, 06-security-and-permissions.md, 07-prompt-engineering.md, 08-performance-and-startup.md, 09-benchmarks-reference.md.\n\nThen audit the following agent design against all 9 dimensions. Score each: ✅ Solid / ⚠️ Partial / ❌ Gap. Produce a scorecard table, top 3 prioritized improvements with benchmark citations (e.g. 'centralized orchestration: 4.4× vs 17.2× — Google DeepMind, Dec 2025'), and 2–3 callouts for what's already strong. Framework-agnostic analysis.\n\nAgent design to review:\n{{{ input }}}"
+    },
+    {
+      "name": "improve-agent",
+      "description": "Get targeted improvement recommendations for an agent component. Usage: /improve-agent [orchestration|memory|tools|security|performance|prompting|verification]",
+      "prompt": "You are an expert in LLM agent systems. Based on the topic or component the user provides, read the relevant best-practice doc(s) from `best-practices/` in this repo:\n- orchestration → 01-multi-agent-orchestration.md\n- worker/prompting → 02-worker-prompting.md + 07-prompt-engineering.md\n- memory/context/rag → 03-context-and-memory.md\n- tools → 04-tool-design.md\n- verification/testing → 05-verification-and-testing.md\n- security/permissions → 06-security-and-permissions.md\n- performance/startup → 08-performance-and-startup.md\n- (no keyword) → all 9 docs\n\nProduce improvement cards: current state → recommended change → benchmark justification (cite number + source) → implementation sketch (framework-agnostic) → effort (Low/Medium/High). End with a Quick wins section (under 1 hour, high impact).\n\nUser input: {{{ input }}}"
+    },
+    {
+      "name": "best-practices",
+      "description": "Load a best-practice reference doc by topic. Usage: /best-practices [orchestration|memory|tools|security|performance|prompting|verification|benchmarks|all]",
+      "prompt": "Read the relevant best-practice doc from `best-practices/` in this repo based on the topic keyword:\n- orchestration → 01-multi-agent-orchestration.md\n- worker → 02-worker-prompting.md\n- prompting → 02-worker-prompting.md + 07-prompt-engineering.md\n- memory/context/rag → 03-context-and-memory.md\n- tools → 04-tool-design.md\n- verification/testing → 05-verification-and-testing.md\n- security/permissions → 06-security-and-permissions.md\n- performance/startup → 08-performance-and-startup.md\n- benchmarks → 09-benchmarks-reference.md\n- all → best-practices/README.md summary\n\nPresent: key benchmarks table, 3–5 core principles, full doc, and 2–3 self-check questions for the user to apply to their own agent.\n\nTopic: {{{ input }}}"
+    }
+  ]
+}

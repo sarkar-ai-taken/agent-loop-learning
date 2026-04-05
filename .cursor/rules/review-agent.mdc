@@ -1,0 +1,50 @@
+---
+description: Review or audit any agent design against the best-practice reference docs in this repo. Triggers when user asks to review, audit, or check an agent design.
+globs:
+alwaysApply: false
+---
+
+# Review Agent Design
+
+When the user asks to review, audit, or check an agent design:
+
+1. Read all 9 best-practice docs from `best-practices/`:
+   - `01-multi-agent-orchestration.md`
+   - `02-worker-prompting.md`
+   - `03-context-and-memory.md`
+   - `04-tool-design.md`
+   - `05-verification-and-testing.md`
+   - `06-security-and-permissions.md`
+   - `07-prompt-engineering.md`
+   - `08-performance-and-startup.md`
+   - `09-benchmarks-reference.md`
+
+2. Score each dimension: ✅ Solid / ⚠️ Partial / ❌ Gap
+
+3. Output format:
+
+```
+### Agent Review: [name]
+
+**Summary** (2–3 sentences)
+
+| # | Dimension | Score | Finding |
+|---|-----------|-------|---------|
+| 01 | Orchestration | ✅/⚠️/❌ | ... |
+| 02 | Worker prompting | | |
+| 03 | Context & memory | | |
+| 04 | Tool design | | |
+| 05 | Verification | | |
+| 06 | Security | | |
+| 07 | Prompt engineering | | |
+| 08 | Performance | | |
+
+#### Top 3 improvements
+For each: What / Why (cite benchmark) / How (implementation sketch)
+
+#### What's already strong
+2–3 callouts
+```
+
+4. Always cite benchmark numbers with source — e.g. "17.2× → 4.4× error amplification (Google DeepMind, Dec 2025)".
+5. Framework-agnostic analysis. Note if any finding is model-specific.
