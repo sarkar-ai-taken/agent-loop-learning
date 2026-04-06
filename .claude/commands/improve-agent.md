@@ -30,7 +30,12 @@ Generate targeted, benchmark-backed improvement recommendations for a specific a
    - `performance` → `08-performance-and-startup.md`
    - No keyword → read all 9 docs
 
-2. Ask for the agent design if not provided (code, description, or architecture notes).
+2. **Explore the current repo first** — do not ask the user for anything yet. Search for agent-related code:
+   - Files matching `*agent*`, `*tool*`, `*prompt*`, `*chain*`, `*workflow*` in `src/`, `lib/`, `app/`, root
+   - Imports of agent frameworks: `langchain`, `langgraph`, `openai`, `anthropic`, `autogen`, `crewai`
+   - System prompt definitions, tool definitions, agent loop logic
+   - `CLAUDE.md`, `AGENTS.md`, or any README describing the agent architecture
+   Read the relevant files to understand the current state before producing recommendations. Only ask the user if no agent code can be found after exploring.
 
 3. Produce improvement recommendations in this format:
 

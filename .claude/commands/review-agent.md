@@ -6,13 +6,14 @@ Perform a structured audit of an agent design against all best-practice referenc
 
 ## Instructions
 
-The user will either:
-- Paste agent code, a design doc, or a description of their agent system
-- Or point you to files in their project
+1. **Explore the current repo first** — do not ask the user for anything yet. Look for agent-related code by searching for common patterns:
+   - Files matching `*agent*`, `*tool*`, `*prompt*`, `*chain*`, `*workflow*` in `src/`, `lib/`, `app/`, root
+   - Imports of agent frameworks: `langchain`, `langgraph`, `openai`, `anthropic`, `autogen`, `crewai`, `pydantic`
+   - System prompt definitions, tool definitions, agent loop logic
+   - `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, or any README describing the agent architecture
+   Read the most relevant files to understand the agent design. Only ask the user if you genuinely cannot find any agent-related code after exploring.
 
-Do the following:
-
-1. **Read all 9 best-practice docs** from `best-practices/` in this repo before responding.
+2. **Read all 9 best-practice docs** from `best-practices/` in this repo.
 
 2. **Produce a structured gap analysis** using this format:
 
