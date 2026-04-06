@@ -25,9 +25,9 @@ When the user asks about agent design, architecture, prompting, memory, tools, s
 
 ## Workflows
 
-**Review / audit**: Read all 9 docs → scorecard (✅/⚠️/❌ per dimension) → top 3 improvements with benchmark citations → strengths.
+**Review / audit**: Explore the current repo first for agent code (`*agent*`, `*tool*`, `*prompt*`, framework imports, `CLAUDE.md`/`AGENTS.md`) — read the relevant files before asking the user for anything. Then read all 9 docs → scorecard (✅/⚠️/❌ per dimension) → top 3 improvements with benchmark citations → strengths. Only ask if no agent code is found.
 
-**Improve [component]**: Read relevant doc(s) → improvement cards (current state / change / benchmark / sketch / effort) → quick wins.
+**Improve [component]**: Explore the current repo first (same as above). Then read relevant doc(s) → improvement cards (current state / change / benchmark / sketch / effort) → quick wins. Only ask if no agent code is found.
 
 **Best practices on [topic]**: Read matched doc → key benchmarks + core principles + full doc + self-check questions.
 

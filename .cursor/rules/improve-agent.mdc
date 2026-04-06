@@ -6,7 +6,16 @@ alwaysApply: false
 
 # Improve Agent Component
 
-When the user asks to improve an agent or a specific component, map their keyword to the relevant best-practice doc:
+When the user asks to improve an agent or a specific component:
+
+1. **Explore the current repo first** — do not ask the user for anything yet. Search for agent-related code:
+   - Files matching `*agent*`, `*tool*`, `*prompt*`, `*chain*`, `*workflow*` in `src/`, `lib/`, `app/`, root
+   - Imports of agent frameworks: `langchain`, `langgraph`, `openai`, `anthropic`, `autogen`, `crewai`
+   - System prompt definitions, tool definitions, agent loop logic
+   - `CLAUDE.md`, `AGENTS.md`, or any README describing the agent architecture
+   Read the relevant files. Only ask the user if no agent code is found after exploring.
+
+Then map their keyword to the relevant best-practice doc:
 
 | Keyword | Doc to read |
 |---------|-------------|

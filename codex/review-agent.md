@@ -14,7 +14,9 @@ Your analysis is framework-agnostic — it applies to any agent on any model.
 ## User prompt template
 
 ```
-Review the following agent design against all 9 best-practice dimensions.
+First, explore the current repo for agent-related code — search for files matching *agent*, *tool*, *prompt*, *chain*, *workflow* in src/, lib/, app/, and root; look for framework imports (langchain, openai, anthropic, autogen, crewai); find system prompt definitions, tool definitions, and any CLAUDE.md, AGENTS.md, or README describing the architecture. Read those files. Only ask for code if nothing is found.
+
+Then review the agent design against all 9 best-practice dimensions.
 
 Read these files first:
 - best-practices/01-multi-agent-orchestration.md

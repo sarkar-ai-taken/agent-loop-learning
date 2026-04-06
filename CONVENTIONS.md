@@ -7,7 +7,7 @@ This repo is a reference library for auditing, reviewing, and improving LLM-base
 ## Aider usage patterns
 
 ### Review an agent design
-Add the relevant files to context, then ask:
+Aider reads files you explicitly add to context. Add the best-practice docs plus the agent files from the current repo:
 ```
 aider best-practices/01-multi-agent-orchestration.md \
       best-practices/02-worker-prompting.md \
@@ -18,9 +18,14 @@ aider best-practices/01-multi-agent-orchestration.md \
       best-practices/07-prompt-engineering.md \
       best-practices/08-performance-and-startup.md \
       best-practices/09-benchmarks-reference.md \
-      <your-agent-file>
+      src/agent.py   # ← replace with actual agent files in this repo
 ```
 Then: "Review my agent against the best-practice docs. Score each dimension ✅/⚠️/❌, list top 3 improvements with benchmark citations, and call out what's strong."
+
+To find agent files in the current repo first:
+```bash
+find . -name "*agent*" -o -name "*tool*" -o -name "*prompt*" | grep -v node_modules | grep -v .git
+```
 
 ### Improve a component
 Add only the relevant doc + your agent file:

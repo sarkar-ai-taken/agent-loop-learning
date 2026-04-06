@@ -8,7 +8,14 @@ alwaysApply: false
 
 When the user asks to review, audit, or check an agent design:
 
-1. Read all 9 best-practice docs from `best-practices/`:
+1. **Explore the current repo first** — do not ask the user for anything yet. Search for agent-related code:
+   - Files matching `*agent*`, `*tool*`, `*prompt*`, `*chain*`, `*workflow*` in `src/`, `lib/`, `app/`, root
+   - Imports of agent frameworks: `langchain`, `langgraph`, `openai`, `anthropic`, `autogen`, `crewai`
+   - System prompt definitions, tool definitions, agent loop logic
+   - `CLAUDE.md`, `AGENTS.md`, or any README describing the agent architecture
+   Read the relevant files. Only ask the user if no agent code is found after exploring.
+
+2. Read all 9 best-practice docs from `best-practices/`:
    - `01-multi-agent-orchestration.md`
    - `02-worker-prompting.md`
    - `03-context-and-memory.md`

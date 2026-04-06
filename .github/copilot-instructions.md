@@ -30,16 +30,18 @@ Always read the relevant doc before answering questions about:
 ## Review workflow
 
 When asked to review or audit an agent design:
-1. Read all 9 docs.
-2. Score each dimension: ✅ Solid / ⚠️ Partial / ❌ Gap.
-3. Return scorecard, top 3 prioritized improvements (with benchmark citations), and callouts for what's strong.
+1. **Explore the current repo first** — do not ask the user for anything. Search for agent-related files (`*agent*`, `*tool*`, `*prompt*`, `*chain*`, `*workflow*`), framework imports (`langchain`, `openai`, `anthropic`, `autogen`, `crewai`), system prompt definitions, and any `CLAUDE.md`, `AGENTS.md`, or README describing the architecture. Read the relevant files. Only ask if no agent code is found.
+2. Read all 9 docs.
+3. Score each dimension: ✅ Solid / ⚠️ Partial / ❌ Gap.
+4. Return scorecard, top 3 prioritized improvements (with benchmark citations), and callouts for what's strong.
 
 ## Improve workflow
 
 When asked to improve an agent or a component:
-1. Read the relevant doc(s).
-2. Return improvement cards: current state → recommended change → benchmark justification → implementation sketch → effort.
-3. End with quick wins (under 1 hour, high impact).
+1. **Explore the current repo first** (same search as review above). Only ask if no agent code is found.
+2. Read the relevant doc(s).
+3. Return improvement cards: current state → recommended change → benchmark justification → implementation sketch → effort.
+4. End with quick wins (under 1 hour, high impact).
 
 ## Rules
 - Cite benchmark numbers with source: e.g. "4.4× vs 17.2× error amplification — Google DeepMind, Dec 2025".

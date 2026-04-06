@@ -21,15 +21,17 @@ All reference material lives in `best-practices/`. Read the relevant doc(s) befo
 ## Workflows
 
 ### "Review my agent" / "Audit this design"
-1. Read all 9 best-practice docs.
-2. Produce a dimension-by-dimension scorecard: ✅ Solid / ⚠️ Partial / ❌ Gap.
-3. List top 3 prioritized improvements with benchmark justifications.
-4. Call out what's already strong.
+1. **Explore the current repo first** — do not ask the user for anything. Search for agent-related files (`*agent*`, `*tool*`, `*prompt*`, `*chain*`, `*workflow*`), framework imports (`langchain`, `openai`, `anthropic`, `autogen`, `crewai`), system prompt definitions, and any `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, or README describing the architecture. Read the relevant files. Only ask if no agent code is found.
+2. Read all 9 best-practice docs.
+3. Produce a dimension-by-dimension scorecard: ✅ Solid / ⚠️ Partial / ❌ Gap.
+4. List top 3 prioritized improvements with benchmark justifications.
+5. Call out what's already strong.
 
 ### "Improve [component]" / "How do I improve [X]?"
-1. Read the relevant doc(s) from the table above based on the component keyword.
-2. Produce improvement cards: current state → recommended change → benchmark citation → implementation sketch → effort.
-3. End with a Quick wins section.
+1. **Explore the current repo first** (same search as review above). Only ask if no agent code is found.
+2. Read the relevant doc(s) from the table above based on the component keyword.
+3. Produce improvement cards: current state → recommended change → benchmark citation → implementation sketch → effort.
+4. End with a Quick wins section.
 
 ### "Best practices for [topic]"
 1. Match the topic to the table above.

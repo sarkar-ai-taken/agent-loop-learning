@@ -22,12 +22,13 @@ All reference material lives in `best-practices/`. Read the relevant doc(s) befo
 
 ### Review an agent design
 When the user asks to "review", "audit", or "check" an agent:
-1. Read all 9 best-practice docs.
-2. Score each dimension: ✅ Solid / ⚠️ Partial / ❌ Gap.
-3. Return a scorecard table, top 3 prioritized improvements with benchmark citations, and what's already strong.
+1. **Explore the current repo first** — do not ask the user for anything. Search for agent-related files (`*agent*`, `*tool*`, `*prompt*`, `*chain*`, `*workflow*`), framework imports (`langchain`, `openai`, `anthropic`, `autogen`, `crewai`), system prompt definitions, and any `CLAUDE.md`, `AGENTS.md`, or README describing the architecture. Read the relevant files. Only ask if no agent code is found.
+2. Read all 9 best-practice docs.
+3. Score each dimension: ✅ Solid / ⚠️ Partial / ❌ Gap.
+4. Return a scorecard table, top 3 prioritized improvements with benchmark citations, and what's already strong.
 
 ### Improve a specific component
-When the user asks to "improve" or gives a topic keyword:
+When the user asks to "improve" or gives a topic keyword, **explore the current repo first** (same search as review above) before producing recommendations. Only ask if no agent code is found.
 1. Read the relevant doc(s) from the table above.
 2. Return improvement cards: current state → recommended change → benchmark justification → implementation sketch → effort (Low/Medium/High).
 3. End with a Quick wins section (changes under 1 hour, high impact).

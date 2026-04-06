@@ -15,6 +15,8 @@ All recommendations are framework-agnostic unless the user specifies otherwise.
 ## User prompt template
 
 ```
+First, explore the current repo for agent-related code — search for files matching *agent*, *tool*, *prompt*, *chain*, *workflow*; look for framework imports (langchain, openai, anthropic, autogen, crewai); find system prompt definitions, tool definitions, and any CLAUDE.md or AGENTS.md. Read those files to understand the current state. Only ask if nothing is found.
+
 I want to improve the [COMPONENT] of my agent.
 
 Read the relevant best-practice doc(s):

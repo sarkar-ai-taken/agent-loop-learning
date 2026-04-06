@@ -502,6 +502,24 @@ The 73% first-year failure rate isn't a model problem. The models are good enoug
 
 ---
 
+## Seeing It In Practice: A Real Review of OpenClaw
+
+To make this concrete, here's what `/review-agent` produced when run against [OpenClaw](https://github.com/openclaw), a production-grade open-source Pi/subagent runtime. The command explored the repo automatically — no code was pasted.
+
+![OpenClaw review output showing the full scorecard, top 3 improvements, and strengths section](./openclaw.png)
+
+A few things worth noting from this output:
+
+**What scored well:** OpenClaw had two ✅ dimensions — orchestration and security — which are the hardest to retrofit. The prompt-cache stability engineering (`prompt-cache-stability.ts`, `system-prompt-cache-boundary.ts`) is exactly the pattern from section 2 of this post: capability IDs normalized and sorted, explicit stable/dynamic boundary enforced in code. The defense-in-depth security stack (sandbox isolation, safe-bin allowlists, session write locks, audit logging) maps directly to the Zero Trust model in the best practices.
+
+**Where the gaps were:** Four ⚠️ dimensions. The most critical: no independent verification worker. Agents self-report pass/fail with no adversarial second pass — which is the unguided self-reflection problem (+1.8 pp vs +80% with structured external feedback). The second gap: working memory is excellent but semantic/procedural memory tiers don't exist as first-class constructs. Every session starts cold.
+
+**The top improvement:** Spawn a fresh verification subagent after every implementation task. Give it only *what* changed, not *how* — and an adversarial brief. One architectural change, 17.2× → 4.4× error amplification.
+
+The full review with implementation sketches for all three improvements is in [`openclaw-review-results.md`](./openclaw-review-results.md) in this repo.
+
+---
+
 ## The Reference Library
 
 All 9 best-practice docs with benchmark tables and primary source citations are open source, along with skills for Claude Code, Cursor, Codex CLI, Gemini CLI, Windsurf, Aider, and Continue.dev:
