@@ -119,13 +119,17 @@ Copy the `customCommands` array into your existing `.continue/config.json` if yo
 
 ## Quick start
 
+### Option A — Use directly in this repo
+
+Clone and open in your agent. All commands and best-practice docs are already in place.
+
 ```bash
 git clone https://github.com/sarkar-ai-taken/agent-loop-learning
 cd agent-loop-learning
 
 # Claude Code
 claude .
-# then: /review-agent → paste your agent
+# then run: /review-agent  →  paste your agent design
 
 # Codex CLI
 codex --full-auto "$(cat codex/review-agent.md)" -- your-agent.py
@@ -134,6 +138,62 @@ codex --full-auto "$(cat codex/review-agent.md)" -- your-agent.py
 aider best-practices/01-multi-agent-orchestration.md your-agent.py
 # then: "Review my orchestration against the best-practice doc"
 ```
+
+---
+
+### Option B — Add skills to your own project
+
+Copy two folders into your project root. The commands reference `best-practices/` by relative path, so both are required.
+
+**Claude Code**
+```bash
+cp -r .claude/commands /your-project/.claude/commands
+cp -r best-practices   /your-project/best-practices
+```
+Then open your project in Claude Code and run `/review-agent`.
+
+**Cursor**
+```bash
+cp -r .cursor/rules  /your-project/.cursor/rules
+cp -r best-practices /your-project/best-practices
+```
+
+**Windsurf**
+```bash
+cp .windsurf/rules.md /your-project/.windsurf/rules.md
+cp -r best-practices  /your-project/best-practices
+```
+
+**GitHub Copilot**
+```bash
+cp .github/copilot-instructions.md /your-project/.github/copilot-instructions.md
+cp -r best-practices                /your-project/best-practices
+```
+
+**Codex CLI**
+```bash
+cp AGENTS.md         /your-project/AGENTS.md
+cp -r codex          /your-project/codex
+cp -r best-practices /your-project/best-practices
+```
+
+**Gemini CLI**
+```bash
+cp GEMINI.md         /your-project/GEMINI.md
+cp -r best-practices /your-project/best-practices
+```
+
+**Aider**
+```bash
+cp CONVENTIONS.md    /your-project/CONVENTIONS.md
+cp -r best-practices /your-project/best-practices
+```
+
+**Continue.dev**
+```bash
+cp -r best-practices /your-project/best-practices
+```
+Then merge the `customCommands` array from `.continue/config.json` into your project's existing `.continue/config.json`.
 
 ---
 
