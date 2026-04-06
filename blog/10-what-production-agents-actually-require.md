@@ -1,70 +1,300 @@
-# What Production AI Agents Actually Require: 9 Hard Lessons from the Research and the Code
+# 9 Things I Learned Reading Claude Code's Source Code
 
-*A field guide compiled from benchmark studies, peer-reviewed research, and the internals of Claude Code (April 2026)*
-
----
-
-73% of enterprise AI agents fail in their first year of production.
-
-That number — from Cleanlab's 2025 State of AI Agents report — is not a model capability problem. The models are good enough. The failure is architectural: teams build agents the way they build chatbots, and agents have fundamentally different failure modes.
-
-This is a long post. It covers nine distinct dimensions of production agent design — each backed by benchmark data and, where possible, by the source code of Claude Code, one of the few production agentic systems whose internals are publicly readable. Each section ends with the thing you should change in your own agent today.
-
-If you only have five minutes, skip to sections 3, 5, and 6. Those are where most agents fail.
+*A deep dive into how Anthropic's production agent actually works — with the real code, the real design decisions, and the lessons you can copy today*
 
 ---
 
-## The Benchmarks at a Glance
+Most "agent best practices" posts cite research papers and give you generic advice. This one is different.
 
-Before the detail, the numbers that frame everything else:
+Claude Code is one of the few production-grade AI coding agents with readable source code. I went through it. What follows are 9 concrete, specific things the Anthropic engineering team did — with the actual code — that most teams building agents get wrong.
 
-| Claim | Number | Source |
-|-------|--------|--------|
-| Enterprise agent failure rate (year 1) | 73% | Cleanlab, 2025 |
-| Multi-agent error amplification — unstructured | 17.2× | Google DeepMind, Dec 2025 |
-| Multi-agent error amplification — centralized | 4.4× | Google DeepMind, Dec 2025 |
-| Single-agent wins vs multi-agent | 64% of sequential tasks | Princeton NLP, 2025 |
-| Scaffold gain, same model | +8 pp (62.3% → 70.3%) | SWE-bench, Feb 2025 |
-| Top SWE-bench Verified score | 81.42% | Claude Opus 4.6, April 2026 |
-| Context degradation onset | 50K tokens — even with a 1M window | Chroma / Morph, 2025 |
-| Lost-in-the-middle accuracy drop | ~30%+ | Liu et al. (Stanford), 2024 |
-| Agentic RAG vs. traditional RAG | +26% accuracy, 90% fewer tokens | Multiple, 2025 |
-| Prompt injection in production deployments | 73% vulnerable | OWASP audits, 2025 |
-| Defense layers reduce attack success | 73.2% → 8.7% | Layered defense research, 2025 |
-| Unguided self-reflection gain (frontier models) | +1.8 pp | 2025 refinement study |
-| Guided external feedback gain | +80% within 5 turns | 2025 refinement study |
-| 20-step agent at 95% per-step reliability | 36% end-to-end success | Compounding math |
+Each section ends with what you should change in your own agent today.
 
 ---
 
-## 1. Orchestration: The Coordinator/Worker Split Is the Foundation
+## 1. CLAUDE.md Is Not in the System Prompt
 
-The most durable architectural pattern in production multi-agent systems separates **orchestration** from **execution**. It sounds obvious; most teams don't do it.
+This is the most counterintuitive thing in Claude Code's architecture, and the one most teams building similar tools get wrong.
 
-The coordinator communicates with the user, decides what to do next, directs workers, and synthesizes findings. It never executes raw operations when a worker can. Workers execute bounded, self-contained tasks with no access to conversation history — they receive everything they need in their prompt.
+Every Claude Code user knows about `CLAUDE.md` — the file where you put project-specific instructions. The natural assumption is that it gets injected into the system prompt. **It does not.** It goes into the user turn.
 
-**Why this matters:** Google DeepMind's December 2025 study measured error amplification in multi-agent systems. In "bag of agents" designs — where agents coordinate loosely without a centralized orchestrator — errors compounded at **17.2×**. With centralized orchestration, that dropped to **4.4×**. A single architectural decision produced a 4× improvement in correctness.
-
-But multi-agent systems aren't always the answer. Princeton NLP's 2025 benchmark found that single agents win **64% of sequential tasks** — adding agents adds coordination overhead without quality gains. The research is clear: multi-agent wins on parallelizable, broad tasks. For sequential work, you're probably better off with one well-prompted agent.
-
-**The coordination plateau:** gains stop beyond 4 concurrent agents in most evaluations. More agents mean more coordination, more context pollution, and more compounding errors.
-
-Claude Code implements this pattern directly. The codebase distinguishes between coordinator and worker modes at the session level:
+Here's the code:
 
 ```typescript
-// src/coordinator/coordinatorMode.ts
-export function isCoordinatorMode(): boolean {
-  if (feature('COORDINATOR_MODE')) {
-    return isEnvTruthy(process.env.CLAUDE_CODE_COORDINATOR_MODE)
-  }
-  return false
+// src/context.ts
+export const getUserContext = memoize(
+  async (): Promise<{ [k: string]: string }> => {
+    const claudeMd = shouldDisableClaudeMd
+      ? null
+      : getClaudeMds(filterInjectedMemoryFiles(await getMemoryFiles()))
+
+    return {
+      ...(claudeMd && { claudeMd }),
+      currentDate: `Today's date is ${getLocalISODate()}.`,
+    }
+  },
+)
+```
+
+And here's where it gets injected:
+
+```typescript
+// src/utils/api.ts
+export function prependUserContext(
+  messages: Message[],
+  context: { [k: string]: string },
+): Message[] {
+  return [
+    createUserMessage({
+      content: `<system-reminder>\nAs you answer the user's questions, you can use the following context:\n${Object.entries(
+        context,
+      )
+        .map(([key, value]) => `# ${key}\n${value}`)
+        .join('\n')}
+
+      IMPORTANT: this context may or may not be relevant to your tasks. You should not respond to this context unless it is highly relevant to your task.\n</system-reminder>\n`,
+      isMeta: true,
+    }),
+    ...messages,
+  ]
 }
 ```
 
-And the task type system enforces the distinction between local, remote, and in-process agents:
+`getUserContext()` returns `claudeMd` and `currentDate`. They are both wrapped in a `<system-reminder>` block inside a **user message** — `isMeta: true` marks it as infrastructure, invisible to the user — and prepended to the conversation.
+
+Contrast this with `getSystemContext()`, which returns `gitStatus` and is appended to the actual system prompt via `appendSystemContext()`.
+
+**Why?** The system prompt is stable across turns and can be cached aggressively. CLAUDE.md changes per project. If CLAUDE.md were in the system prompt, every project change would bust the cache for every user. By moving it to the first user turn, the system prompt stays stable (and cacheable at org scope), and CLAUDE.md enters the conversation as context the model reads, not as instructions it's initialized with.
+
+**The semantic difference matters too.** System prompt = who the agent is and what it must always do. CLAUDE.md = what you should know about this project. Those are different things, and placing them in different locations makes that explicit.
+
+**What to change today:** If your agent's project-specific context is in the system prompt, move it to the first user turn wrapped in a `<system-reminder>` block. Keep your system prompt stable. Let project context be contextual.
+
+---
+
+## 2. Cache Boundaries Are Named and Enforced in Code
+
+Every production agent leaks money through cache misses. Claude Code handles this by making cache boundary violations visible at the code level.
+
+Two functions, explicitly named to signal cost:
+
+```typescript
+// src/constants/systemPromptSections.ts
+
+/**
+ * Create a memoized system prompt section.
+ * Computed once, cached until /clear or /compact.
+ */
+export function systemPromptSection(
+  name: string,
+  compute: ComputeFn,
+): SystemPromptSection {
+  return { name, compute, cacheBreak: false }
+}
+
+/**
+ * Create a volatile system prompt section that recomputes every turn.
+ * This WILL break the prompt cache when the value changes.
+ * Requires a reason explaining why cache-breaking is necessary.
+ */
+export function DANGEROUS_uncachedSystemPromptSection(
+  name: string,
+  compute: ComputeFn,
+  _reason: string,  // ← you must write why
+): SystemPromptSection {
+  return { name, compute, cacheBreak: true }
+}
+```
+
+`DANGEROUS_uncachedSystemPromptSection` takes a `_reason` parameter. The underscore means it's not used at runtime — it's documentation-as-code. Every engineer who calls this function has to write a reason for why this section should recompute every turn and break the cache. The naming convention makes the cost visible in code review.
+
+The system prompt also has a literal boundary marker between what can be globally cached and what cannot:
+
+```typescript
+// src/constants/prompts.ts
+
+/**
+ * Boundary marker separating static (cross-org cacheable) content
+ * from dynamic content.
+ */
+export const SYSTEM_PROMPT_DYNAMIC_BOUNDARY =
+  '__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__'
+```
+
+And feature flags follow the same explicit-cost convention:
+
+```typescript
+// src/coordinator/coordinatorMode.ts
+checkStatsigFeatureGate_CACHED_MAY_BE_STALE('tengu_scratch')
+```
+
+`_CACHED_MAY_BE_STALE` is not a warning — it's the name. When you call this function, you are declaring that you accept reading a potentially stale value from cache. The alternative is `initializeFeatureFlags()`, which makes a network call. The naming forces the choice to be explicit at every call site.
+
+**What to change today:** Name your volatile prompt sections explicitly. Use a convention like `VOLATILE_` or `UNCACHED_` as a prefix for anything that recomputes each turn. Make cache-breaking visible in code.
+
+---
+
+## 3. The Verification Agent Cannot Edit Files — By Design
+
+Claude Code ships a built-in verification agent. Its system prompt is 130+ lines of carefully engineered adversarial instruction. But the architectural detail is what's interesting:
+
+```typescript
+// src/tools/AgentTool/built-in/verificationAgent.ts
+
+export const VERIFICATION_AGENT: BuiltInAgentDefinition = {
+  agentType: 'verification',
+  disallowedTools: [
+    AGENT_TOOL_NAME,        // cannot spawn sub-agents
+    EXIT_PLAN_MODE_TOOL_NAME,
+    FILE_EDIT_TOOL_NAME,    // cannot edit files
+    FILE_WRITE_TOOL_NAME,   // cannot write files
+    NOTEBOOK_EDIT_TOOL_NAME,
+  ],
+  source: 'built-in',
+  background: true,
+  model: 'inherit',
+  getSystemPrompt: () => VERIFICATION_SYSTEM_PROMPT,
+  criticalSystemReminder_EXPERIMENTAL:
+    'CRITICAL: This is a VERIFICATION-ONLY task. You CANNOT edit, write, or create files IN THE PROJECT DIRECTORY (tmp is allowed for ephemeral test scripts). You MUST end with VERDICT: PASS, VERDICT: FAIL, or VERDICT: PARTIAL.',
+}
+```
+
+The verification agent has `FILE_EDIT_TOOL_NAME` and `FILE_WRITE_TOOL_NAME` in its `disallowedTools` list. This is not a prompt instruction — it's an architectural constraint enforced by the tool permission system. The agent literally cannot edit files. Not because it was told not to, but because the tool isn't in its available set.
+
+The `criticalSystemReminder_EXPERIMENTAL` field is also revealing — it's a separate injection mechanism that provides a persistent reminder at a specific location in the context, separate from the main system prompt. This is an acknowledgment that even a good system prompt can be "forgotten" as context grows. The critical reminder is injected at a location designed to survive context rot.
+
+The verification agent's system prompt itself is engineering worth reading. It explicitly names its own failure modes:
+
+> "You have two documented failure patterns. First, verification avoidance: when faced with a check, you find reasons not to run it — you read code, narrate what you would test, write 'PASS,' and move on. Second, being seduced by the first 80%..."
+
+And it pre-empts the rationalizations the agent will reach for:
+
+> "- 'The code looks correct based on my reading' — reading is not verification. Run it.  
+> - 'The implementer's tests already pass' — the implementer is an LLM. Verify independently.  
+> - 'This is probably fine' — probably is not verified. Run it."
+
+This is the hardest-won lesson in agentic systems: **models will take the path of least resistance**. If the verification agent can rationalize a PASS, it will. The system prompt pre-empts those rationalizations by naming them.
+
+**What to change today:** Implement your verification agent with `disallowedTools` enforced at the architectural level, not just the prompt level. And pre-write the rationalizations your verification agent will reach for — then explicitly prohibit them in the system prompt.
+
+---
+
+## 4. The Denial Circuit Breaker Is Exact and Enforced
+
+Claude Code's permission system includes a circuit breaker with specific, hardcoded thresholds:
+
+```typescript
+// src/utils/permissions/denialTracking.ts
+
+export const DENIAL_LIMITS = {
+  maxConsecutive: 3,
+  maxTotal: 20,
+} as const
+
+export function shouldFallbackToPrompting(
+  state: DenialTrackingState,
+): boolean {
+  return (
+    state.consecutiveDenials >= DENIAL_LIMITS.maxConsecutive ||
+    state.totalDenials >= DENIAL_LIMITS.maxTotal
+  )
+}
+```
+
+If an agent's tool calls are denied **3 times in a row**, or **20 times total** in a session, the system falls back to prompting the user directly. This is a circuit breaker that catches two distinct failure modes:
+
+1. **Consecutive denials** (3 max): the agent is stuck in a loop trying the same blocked action repeatedly — likely injection or runaway behavior
+2. **Total denials** (20 max): the agent is operating broadly outside its permitted scope — a deeper permission misconfiguration or session drift
+
+State is tracked immutably and a success resets the consecutive counter (but not the total):
+
+```typescript
+export function recordDenial(state: DenialTrackingState): DenialTrackingState {
+  return {
+    ...state,
+    consecutiveDenials: state.consecutiveDenials + 1,
+    totalDenials: state.totalDenials + 1,
+  }
+}
+
+export function recordSuccess(state: DenialTrackingState): DenialTrackingState {
+  if (state.consecutiveDenials === 0) return state
+  return { ...state, consecutiveDenials: 0 }
+}
+```
+
+The immutable update pattern (`{ ...state, field: newValue }`) is intentional — denialTracking state cannot be mutated in place, which prevents a compromised tool from silently resetting its own denial counter.
+
+For async subagents whose `setAppState` is a no-op, there's a `localDenialTracking` field on `ToolUseContext` — a mutable reference passed through the agent context so the counter accumulates correctly even when the agent can't reach the main state store.
+
+This came from production incident data — those exact numbers aren't arbitrary. They represent the threshold at which the pattern of denials changes from "normal agentic friction" to "something is wrong."
+
+**What to change today:** Add a denial circuit breaker to your agent loop. Track consecutive and total denials separately. When either threshold triggers, surface the situation to the user — do not retry.
+
+---
+
+## 5. Tools Default to Unsafe
+
+Every tool in Claude Code is built through `buildTool()`, which applies a set of defaults before the tool definition overrides them:
+
+```typescript
+// src/Tool.ts
+
+const TOOL_DEFAULTS = {
+  isEnabled: () => true,
+  isConcurrencySafe: (_input?) => false,   // assume NOT safe
+  isReadOnly: (_input?) => false,           // assume WRITES
+  isDestructive: (_input?) => false,
+  checkPermissions: (input, _ctx?): Promise<PermissionResult> =>
+    Promise.resolve({ behavior: 'allow', updatedInput: input }),
+  toAutoClassifierInput: (_input?) => '',   // skip security classifier
+  userFacingName: (_input?) => '',
+}
+
+export function buildTool<D extends AnyToolDef>(def: D): BuiltTool<D> {
+  return {
+    ...TOOL_DEFAULTS,
+    userFacingName: () => def.name,
+    ...def,
+  } as BuiltTool<D>
+}
+```
+
+Three critical defaults:
+- `isConcurrencySafe: false` — assume the tool cannot run in parallel
+- `isReadOnly: false` — assume the tool writes
+- `toAutoClassifierInput: () => ''` — skip the security classifier (the tool is invisible to auto-mode security analysis)
+
+These are **fail-closed** defaults for the first two and **fail-open** for the third. A new tool that doesn't declare itself read-only is treated as a writer. A new tool that doesn't declare itself concurrency-safe is serialized. A new tool that doesn't implement `toAutoClassifierInput` is invisible to the security classifier — which is also a safe default, because most tools don't need classifier input, and an incorrect classifier representation is worse than no representation.
+
+The tool interface also includes `interruptBehavior`:
+
+```typescript
+/**
+ * What should happen when the user submits a new message while this tool
+ * is running.
+ *
+ * - 'cancel' — stop the tool and discard its result
+ * - 'block'  — keep running; the new message waits
+ *
+ * Defaults to 'block' when not implemented.
+ */
+interruptBehavior?(): 'cancel' | 'block'
+```
+
+This is a UX and correctness decision combined. A read-only search tool should `cancel` when interrupted — no point finishing a search the user has already moved past. A write operation should `block` — abandoning a half-written file edit is worse than making the user wait.
+
+**What to change today:** When building tools, explicitly declare `isReadOnly`, `isConcurrencySafe`, and `isDestructive`. Don't rely on defaults for safety-relevant fields. Add `interruptBehavior` to anything that runs for more than a second.
+
+---
+
+## 6. Agents Are Typed and Lifecycle-Managed
+
+Claude Code's task system distinguishes seven types of agents:
 
 ```typescript
 // src/Task.ts
+
 export type TaskType =
   | 'local_bash'
   | 'local_agent'
@@ -73,184 +303,92 @@ export type TaskType =
   | 'local_workflow'
   | 'monitor_mcp'
   | 'dream'
+```
 
+And five lifecycle states:
+
+```typescript
 export type TaskStatus =
   | 'pending'
   | 'running'
   | 'completed'
   | 'failed'
   | 'killed'
+```
 
+`'killed'` is distinct from `'failed'`. A failed task encountered an error; a killed task was deliberately stopped. The distinction matters for cleanup, retry logic, and user reporting. And `isTerminalTaskStatus` provides a single source of truth for "will this task transition again?":
+
+```typescript
 export function isTerminalTaskStatus(status: TaskStatus): boolean {
   return status === 'completed' || status === 'failed' || status === 'killed'
 }
 ```
 
-Notice `'killed'` — not just `'failed'`. Production agents need explicit kill paths, not just completion/failure. This matters for cleaning up agents headed in the wrong direction.
-
-**What to change today:** If your agent both decides what to do and executes operations in the same loop, split it. The coordinator's job is to think. The worker's job is to act. Mixing them pollutes both.
-
----
-
-## 2. Worker Prompting: Scaffolding Beats Model Upgrades
-
-SWE-bench — the benchmark for autonomous software engineering — showed something important in February 2025: **the same model, with better scaffolding, gained +8 percentage points** (62.3% → 70.3%). That's more than many model version upgrades deliver. Scaffold design is underrated.
-
-The key insight: workers need **outcome-based prompts**, not instruction-based prompts.
-
-Most agent prompts look like this:
-```
-Search the codebase for auth-related code and summarize it.
-```
-
-Production worker prompts look like this:
-```
-Search the codebase for auth-related code.
-
-You are done when:
-- You have identified all files that import the auth module
-- You have read the session handling functions in each
-- You have noted any gaps in session expiry handling
-
-Report: file paths, function signatures, and your assessment of the expiry handling.
-Do not make any edits.
-```
-
-The difference is explicit **stop conditions**. Without them, workers either do too little (stop early and report they're done) or too much (keep exploring and accumulate context noise).
-
-**Reasoning depth framing** also matters. The way you frame a worker's task affects how deeply it reasons:
-
-- "Check if the session handling is correct" → surface review
-- "Identify every possible failure mode in the session handling code" → deep analysis
-- "Assume a penetration tester wrote this input. What breaks?" → adversarial reasoning
-
-Same model. Dramatically different output quality.
-
-**The four phases that every substantial task maps to:**
-
-| Phase | Who | Purpose |
-|-------|-----|---------|
-| Research | Workers (parallel) | Explore, find relevant information, understand problem shape |
-| Synthesis | Coordinator | Convert findings into a precise implementation spec |
-| Implementation | Workers (one per file group) | Apply targeted changes per spec |
-| Verification | Workers (fresh, independent) | Prove the change works — don't rubber-stamp |
-
-**Never skip synthesis.** It is the coordinator's most important job. Research findings must be understood and converted into a specific spec before implementation begins. Jumping from research directly to implementation is the most common mistake in multi-agent coding systems.
-
-**What to change today:** Add explicit stop conditions to every worker prompt. Define "done" in terms of outputs and evidence, not activities.
-
----
-
-## 3. Context and Memory: The 50K Token Wall
-
-Every team building agents eventually hits this: the model starts doing worse despite having more information. This is **context rot**, and it is a universal architectural property, not a model capability gap.
-
-Chroma's 2025 study measured 18 frontier LLMs and found the same pattern in all of them: models do not use their context uniformly. Performance grows increasingly unreliable as input length grows. The degradation onset is around **50,000 tokens — even in models with 1M-token windows**.
-
-Liu et al. (Stanford, 2024) quantified the lost-in-the-middle effect: information placed in the middle of a long context window is recalled with **30%+ lower accuracy** than information at the start or end. Your agent isn't ignoring that context; it's attending to it less reliably.
-
-**Practical implications:**
-- A 20-step agent at 95% per-step reliability has only a **36% chance of end-to-end success** (pure compounding math)
-- Every token either helps or costs performance — there are no neutral tokens
-- The middle of your context window is where information goes to be forgotten
-
-**The four memory tiers** that production agents need to distinguish:
-
-| Tier | What it stores | Lifespan | How accessed |
-|------|---------------|----------|--------------|
-| Working / in-context | Current task state, recent turns | Single session | Already in context |
-| Episodic | What happened in past sessions | Days to months | Retrieval from session logs |
-| Semantic | Facts, preferences, learned knowledge | Persistent | Retrieval + memory files |
-| Procedural | How to do recurring tasks | Persistent | Skill definitions, reusable prompts |
-
-Conflating these tiers leads to either context bloat (injecting everything into context) or knowledge loss (discarding what matters between sessions).
-
-**Agentic RAG** is the solution to traditional RAG's inefficiency. Instead of generating a query, retrieving documents, and answering directly, agentic RAG uses the agent to decompose the query, retrieve iteratively, and reason about retrieval quality. The benchmark result: **+26% accuracy, 90% fewer tokens** compared to traditional RAG (multiple 2025 studies).
-
-Mem0's production study (arxiv 2504.19413) showed that well-implemented memory compression achieves **89–95% compression** while maintaining correctness — meaning you can represent nearly all long-term knowledge in a fraction of the original token count.
-
-**What to change today:** If your agent carries full conversation history across tasks, stop. Compress old turns into atomic memory objects. Put critical facts at the start and end of context, not the middle. Treat your context window as a budget that degrades with use.
-
----
-
-## 4. Tool Design: The Six Security Properties
-
-Every tool your agent can call is an attack surface, a permission decision, and a performance constraint. Most teams design tools for capability first; production systems design for safety first.
-
-Claude Code's tool interface is instructive. Every tool must implement:
+Task IDs are typed by agent type, with a security-conscious alphabet:
 
 ```typescript
-// src/Tool.ts (simplified)
-export type Tool = {
-  name: string
-  call(args, context, canUseTool, parentMessage, onProgress?): Promise<ToolResult>
-  checkPermissions(input, context): Promise<PermissionResult>
-  isConcurrencySafe(input): boolean
-  isReadOnly(input): boolean
-  isDestructive?(input): boolean
-  interruptBehavior?(): 'cancel' | 'block'
-  validateInput?(input, context): Promise<ValidationResult>
-  toAutoClassifierInput(input): unknown
+// Case-insensitive-safe alphabet (digits + lowercase) for task IDs.
+// 36^8 ≈ 2.8 trillion combinations, sufficient to resist brute-force symlink attacks.
+const TASK_ID_ALPHABET = '0123456789abcdefghijklmnopqrstuvwxyz'
+
+const TASK_ID_PREFIXES: Record<string, string> = {
+  local_bash:           'b',
+  local_agent:          'a',
+  remote_agent:         'r',
+  in_process_teammate:  't',
+  local_workflow:       'w',
+  monitor_mcp:          'm',
+  dream:                'd',
 }
 ```
 
-The key fields: `isReadOnly`, `isDestructive`, `isConcurrencySafe`, `interruptBehavior`. These are not metadata — they gate permission decisions, UI affordances, and scheduler behavior. Every tool starts fail-closed:
+The prefix `b`, `a`, `r`, `t`, `w`, `m`, `d` makes it instantly obvious from a task ID what kind of agent produced it. The comment explains the design intent — "resist brute-force symlink attacks" — which means someone thought carefully about what an attacker could do with a predictable task ID.
 
-```typescript
-// src/Tool.ts — defaults
-const TOOL_DEFAULTS = {
-  isEnabled: () => true,
-  isConcurrencySafe: (_input?) => false,  // assume NOT safe
-  isReadOnly: (_input?) => false,          // assume writes
-  isDestructive: (_input?) => false,
-  checkPermissions: (input, _ctx?): Promise<PermissionResult> =>
-    Promise.resolve({ behavior: 'allow', updatedInput: input }),
-  toAutoClassifierInput: (_input?) => '',  // skip classifier
-  userFacingName: (_input?) => '',
-}
-```
+`'dream'` is the most interesting type. It appears to be an internal designation for speculative or imaginative agent modes — the kind of task the system might run to explore possibilities without committing to them.
 
-`isConcurrencySafe` defaults to `false` — assume not safe. `isReadOnly` defaults to `false` — assume writes. Any tool that doesn't declare itself concurrency-safe is treated as serialized. This is the right default.
-
-**The six security classification properties every tool should define:**
-
-1. **Scope** — what resources can it access? (file path? URL? database?)
-2. **Mutability** — read-only, write, or destructive?
-3. **Concurrency safety** — can multiple instances run simultaneously?
-4. **Interrupt behavior** — cancel or block when user sends new message?
-5. **Classifier transparency** — what does the auto-security-classifier see?
-6. **Permission tier** — which tier of user approval is required?
-
-**Streaming execution** matters for long-running tools. A tool that blocks for 30 seconds with no output produces worse UX and worse agent behavior than a tool that streams progress. The agent can react to intermediate output; it can't react to silence.
-
-**What to change today:** Add `isReadOnly`, `isDestructive`, and `checkPermissions` to every tool. Default to requiring confirmation for any destructive operation, every time.
+**What to change today:** Add explicit lifecycle states to your agent tasks. Distinguish killed from failed. Make terminal states queryable through a single function so your cleanup logic has one source of truth.
 
 ---
 
-## 5. Verification: The Highest-Leverage Action You Can Take
+## 7. The Verification Agent's System Prompt Is the Product
 
-This section is the most important in the article.
+Most teams write verification into their main agent's instructions: "after completing the task, verify your work." This does not work reliably. The verification agent pattern in Claude Code separates verification into its own agent with its own system prompt, its own tool constraints, and its own verdict format.
 
-The hardest-won lesson in autonomous coding agents is that **self-reported success is not success**. An agent that runs its own tests and says "tests pass" is the first layer of QA, not the last. Without a separate verification mechanism, you are the only feedback loop — and that defeats the purpose of automation.
+The prompt structure is worth studying as a template for any high-stakes agent:
 
-The numbers:
-- Unguided self-reflection at the frontier: **+1.8 pp** over 5 iterations (2025 refinement study, 1,000 problems, 11 domains)
-- Guided external feedback within 5 turns: **+80% gains** (same study)
+**1. Named failure modes** — the prompt opens by naming the two ways the verification agent typically fails (verification avoidance, being seduced by the first 80%). Naming your agent's failure modes at the top of the system prompt is an unusually effective technique.
 
-Unguided self-reflection — asking the model to review its own output — is nearly useless at the frontier. The model is already at the limit of what it can see from its own perspective. External structure changes everything.
+**2. Hard prohibitions in ALL CAPS** — `=== CRITICAL: DO NOT MODIFY THE PROJECT ===`. The all-caps header isn't aesthetic — frontier models respond to visual prominence in prompts. Important prohibitions get headers.
 
-**Reflexion** (the framework, not the introspection) showed this concretely: GPT-4 coding performance improved from 80% to 91% (+11 pp) by adding a verbal reflection component with explicit failure signals. The key: the reflection was structured and externally triggered, not open-ended self-review.
+**3. Type-specific verification strategies** — the prompt provides distinct verification paths for frontend changes, backend/API changes, CLI changes, infrastructure changes, library changes, bug fixes, mobile, data/ML, migrations, and refactoring. This prevents the agent from applying a one-size-fits-all approach.
 
-**The two-layer verification model:**
+**4. Required output format** — every check must follow an exact structure with `Command run`, `Output observed`, and `Result`. A PASS without a command is a skip. The caller can spot-check by re-running the command and comparing output.
 
-Layer 1: The implementation worker self-tests — runs unit tests, type check, linter. This is table stakes.
+**5. Mandatory adversarial probe** — before issuing PASS, the agent must run at least one adversarial probe (concurrency, boundary, idempotency, orphan operation). This prevents the agent from confirming the happy path and calling it verified.
 
-Layer 2: A fresh, independent verification worker re-reads the change, re-runs tests, and reasons about edge cases the implementation worker might have optimized away. This worker has never seen the implementation worker's reasoning — it starts fresh.
+**6. Pre-emptive rationalization blocking** — the prompt names every excuse the agent will reach for and explicitly instructs the agent to do the opposite.
 
-This is exactly the pattern in Claude Code's multi-agent architecture:
+The output ends with `VERDICT: PASS`, `VERDICT: FAIL`, or `VERDICT: PARTIAL` — a parseable machine-readable line that the calling system can extract without reading the whole report.
+
+```typescript
+// The whenToUse field tells the orchestrator when to invoke this agent
+const VERIFICATION_WHEN_TO_USE =
+  'Use this agent to verify that implementation work is correct before reporting completion. Invoke after non-trivial tasks (3+ file edits, backend/API changes, infrastructure changes). Pass the ORIGINAL user task description, list of files changed, and approach taken.'
+```
+
+Note: it's invoked after "3+ file edits." That's the threshold at which self-verification becomes unreliable enough to warrant an independent agent.
+
+**What to change today:** Write your verification agent's system prompt around its failure modes, not its goals. Name what the agent will do wrong. Require a parseable verdict line. Require evidence, not narration.
+
+---
+
+## 8. Swarm Initialization Distinguishes Resumed From Fresh
+
+When Claude Code's multi-agent "swarm" mode starts, it explicitly handles two very different startup paths:
 
 ```typescript
 // src/hooks/useSwarmInitialization.ts
+
 export function useSwarmInitialization(
   setAppState: SetAppState,
   initialMessages: Message[] | undefined,
@@ -259,17 +397,24 @@ export function useSwarmInitialization(
   useEffect(() => {
     if (!enabled) return
     if (isAgentSwarmsEnabled()) {
-      // Resumed agent session — restore from transcript
+      const firstMessage = initialMessages?.[0]
       const teamName = firstMessage?.teamName
       const agentName = firstMessage?.agentName
 
       if (teamName && agentName) {
+        // RESUMED agent session — context stored in transcript
         initializeTeammateContextFromSession(setAppState, teamName, agentName)
-        initializeTeammateHooks(setAppState, getSessionId(), {
-          teamName, agentId: member.agentId, agentName,
-        })
+        const teamFile = readTeamFile(teamName)
+        const member = teamFile?.members.find(m => m.name === agentName)
+        if (member) {
+          initializeTeammateHooks(setAppState, getSessionId(), {
+            teamName,
+            agentId: member.agentId,
+            agentName,
+          })
+        }
       } else {
-        // Fresh spawn — read from env context
+        // FRESH spawn — context from environment
         const context = getDynamicTeamContext?.()
         if (context?.teamName && context?.agentId && context?.agentName) {
           initializeTeammateHooks(setAppState, getSessionId(), context)
@@ -280,154 +425,36 @@ export function useSwarmInitialization(
 }
 ```
 
-Fresh spawns and resumed sessions are explicitly distinguished. Verification agents always start fresh — they don't inherit the implementation worker's context, because that context is the thing being verified.
+The distinction: a **resumed** agent reads its team and agent name from the transcript (`firstMessage.teamName`, `firstMessage.agentName`). A **fresh** agent reads from the environment context. This is important because resumed agents need to restore their specific identity within the team — they can't just re-read the environment, because the environment might now describe a different session.
 
-**Forced acknowledgment** is the other technique that works: require the implementation agent to explicitly state what it tested, what output it observed, and what it concluded — before reporting success. This eliminates the "seems correct" category of failures.
+Team membership is stored in a `teamFile` on disk, keyed by team name. Each member has an `agentId` that survives resume. The hooks — which gate what the agent is allowed to do — are initialized from this persisted state.
 
-Only **15% of enterprise teams** have "elite" evaluation coverage (testing >90% of behaviors — Cleanlab, 2025). The 73% failure rate and the 15% elite coverage number are directly related.
+This matters for verification specifically: the verification agent (`background: true` in its definition) runs as a separate process. On resume, it needs to know it's the verification agent for this specific team, not a fresh general-purpose agent that happens to have the same tools.
 
-**What to change today:** Add a fresh verification agent to every implementation workflow. Give it the spec and the final code. Have it run the tests independently and reason about what could still be wrong. Do not let implementation agents report success without evidence.
-
----
-
-## 6. Security: 73% of Deployments Are Vulnerable
-
-OWASP's 2025 audit of production agentic deployments found prompt injection in **73% of assessed systems**. Forty percent of agent frameworks had exploitable tool-execution flaws. Standard injection success rates run 50–84%. The most capable injection — adaptive, multi-step — succeeds over 85% of the time against undefended systems.
-
-These are not theoretical numbers. EchoLeak (CVE-2025-32711, CVSS 9.3) was the first zero-click production prompt injection documented in 2025. RAG poisoning studies from Palo Alto Unit 42 showed that **5 crafted documents** in a retrieval corpus can achieve a **90% manipulation rate** on a vulnerable agent.
-
-Yet only **34.7% of organizations** have dedicated injection defenses. 83% plan agentic AI deployment (Cisco State of AI Security 2026); only 29% feel ready to secure it.
-
-**The OWASP Top 10 for Agentic Applications (2026):**
-
-1. Prompt injection — malicious content in tool results or user input hijacks agent behavior
-2. Insecure tool/plugin design — tools with excessive permissions or no input validation
-3. Excessive agency — agents authorized to take more action than the task requires
-4. Memory poisoning — malicious data injected into long-term memory
-5. Tool misuse — agent calls tools in unintended sequences to bypass controls
-6. Privilege escalation — agent leverages one permission to gain another
-7. Unsafe code execution — agent executes untrusted code without sandboxing
-8. Supply chain attacks — malicious MCP servers or plugins in the tool set
-9. Inadequate logging — agent actions not auditable
-10. Uncontrolled resource consumption — agent causes DoS through unbounded tool use
-
-Claude Code's permission model implements tiered access across 7 tiers (0 = read project files → 6 = operations outside project scope). The key design principle: **every permission tier requires escalating user approval**, and the approval prompt shows exactly what will happen — not a summary, the actual command or path.
-
-The tool permission context is typed as deeply immutable:
-
-```typescript
-// src/Tool.ts
-export type ToolPermissionContext = DeepImmutable<{
-  mode: PermissionMode
-  additionalWorkingDirectories: Map<string, AdditionalWorkingDirectory>
-  alwaysAllowRules: ToolPermissionRulesBySource
-  alwaysDenyRules: ToolPermissionRulesBySource
-  alwaysAskRules: ToolPermissionRulesBySource
-  isBypassPermissionsModeAvailable: boolean
-  shouldAvoidPermissionPrompts?: boolean
-  awaitAutomatedChecksBeforeDialog?: boolean
-  prePlanMode?: PermissionMode
-}>
-```
-
-`DeepImmutable` — permission state cannot be mutated in-place. This is a security property, not a convenience: it prevents a compromised tool or subagent from silently escalating its own permissions.
-
-**The denial circuit breaker** is the most practical security pattern for production: if an agent's tool calls are denied **3 consecutive times** or **20 total times** in a session, halt and ask the user what's happening. This catches injection attacks (which often generate denied-but-persistent tool calls) and runaway agents before they do significant damage.
-
-**Defense in depth reduces attack success from 73.2% to 8.7%** (layered defense research, 2025). The layers that matter: input sanitization, output validation, permission gates on every tool, denial monitoring, and audit logging.
-
-**What to change today:** Add a denial circuit breaker. If your agent's tool calls are being rejected repeatedly, it should surface that to the user — not retry the same denied action in a loop.
+**What to change today:** If your agents can be resumed, explicitly distinguish the resume path from the fresh-start path. Store agent identity in the transcript, not just the environment. On resume, reconstruct from transcript state, not from current environment.
 
 ---
 
-## 7. Prompt Engineering: Context Engineering Is the Real Skill
+## 9. The Buffer Gate for Message Ordering
 
-The discipline has evolved. "Prompt engineering" — finding the right words — is the entry-level skill. "Context engineering" — curating and maintaining the optimal token set at inference time — is the production skill.
+This is a low-level but important pattern — one that any agent with streaming or bridged communication needs.
 
-Everything in your context window competes for the same finite attention budget:
-- System prompt
-- Conversation history
-- Tool definitions and descriptions
-- Retrieved memories
-- Tool results
-- Injected documents
-
-The practical system prompt sweet spot is **150–300 words of focused context** for most tasks (Anthropic Engineering, 2025). System prompt quality is a primary differentiator between high and low-performing agents on the same model (SWE-bench analysis, 2026).
-
-**A well-structured system prompt:**
-
-```markdown
-## 1. Role and Scope
-[Who the agent is, what it's responsible for, where that scope ends]
-
-## 2. Core Principles
-[3–5 non-negotiable behaviors]
-
-## 3. Available Tools
-[What each does, when to use it, when NOT to use it]
-
-## 4. Workflow
-[The phases of work, step by step]
-
-## 5. Output Standards
-[Format, level of detail, what to include/exclude]
-
-## 6. Anti-patterns
-["Never do this" list with reasons]
-```
-
-**The DO NOT comment** is one of the most effective techniques in production prompt engineering. Policy anchors that say "DO NOT do X because Y" are processed differently than positive instructions. They also survive model upgrades — the explicit prohibition remains visible even as instruction-following capabilities improve. Examples from production systems:
-
-```
-DO NOT make file edits during the research phase.
-DO NOT report success without running the tests and observing their output.
-DO NOT spawn additional workers without explicit user instruction.
-```
-
-**Cache boundaries matter at scale.** 70–90% of a typical system prompt is stable across turns and can be cached (Anthropic prompt caching, 2025). Volatile content (current timestamp, turn-specific context) should go at the end — after the stable, cacheable prefix. A common anti-pattern is to mark frequently-changing fields as `DANGEROUS_UNCACHED_` to make volatility explicit to future engineers:
-
-```typescript
-// Convention: prefix volatile fields so volatility is visible in code
-const prompt = `
-${STABLE_SYSTEM_PROMPT}
-
-Current timestamp: ${DANGEROUS_UNCACHED_timestamp}
-Session-specific context: ${DANGEROUS_UNCACHED_sessionContext}
-`
-```
-
-**What to change today:** Audit your system prompt for cache boundary placement. Stable content first, volatile content last. Add explicit "DO NOT" anchors for the behaviors you've seen your agent do wrong.
-
----
-
-## 8. Performance: The Diminishing-Returns Detector
-
-The two numbers that govern agent loop performance:
-
-- **500 tokens per round × 3 rounds** — if an agent is generating less than 500 tokens per round over 3 consecutive rounds, it has hit a diminishing-returns threshold. Stop early. More iterations won't help.
-- **3 consecutive failures → halt retries** — a circuit breaker at the compaction layer prevents infinite retry loops from destroying a session. This is from production incident data.
-
-Claude Code implements both patterns. The bridge poll loop uses capacity-aware wake primitives that avoid busy-waiting:
-
-```typescript
-// src/bridge/pollConfigDefaults.ts
-const POLL_INTERVAL_MS_NOT_AT_CAPACITY = 2000  // actively seeking work
-const POLL_INTERVAL_MS_AT_CAPACITY = 600_000    // 10 minutes — liveness signal only
-```
-
-And the FlushGate pattern manages message ordering during state transitions:
+When a Claude Code session starts, it flushes historical messages to the server in a single HTTP POST. Any new messages that arrive during this flush must be queued — not sent — or they arrive at the server interleaved with the historical messages, producing a broken conversation state.
 
 ```typescript
 // src/bridge/flushGate.ts
+
 export class FlushGate<T> {
   private _active = false
   private _pending: T[] = []
 
-  start(): void { this._active = true }
+  start(): void {
+    this._active = true
+  }
 
   end(): T[] {
     this._active = false
-    return this._pending.splice(0)  // drain and return
+    return this._pending.splice(0)   // drain and return atomically
   }
 
   enqueue(...items: T[]): boolean {
@@ -442,15 +469,23 @@ export class FlushGate<T> {
     this._pending.length = 0
     return count
   }
+
+  deactivate(): void {
+    this._active = false   // clear flag without dropping items
+    // Used when transport is replaced — new transport's flush will drain
+  }
 }
 ```
 
-This is a state machine for gating writes during flush. When a bridge session starts, historical messages are flushed via a single HTTP POST. New messages that arrive during the flush must be queued — not sent — to prevent interleaving. `start()` begins the gate, `end()` returns the queued items for draining, `drop()` discards on permanent close.
+`deactivate()` is the subtle one — it clears the active flag without dropping the pending items. This is for transport replacement: when the underlying WebSocket connection is replaced mid-session, the new transport takes ownership of the pending queue. `drop()` is for permanent close — the session is done, drop everything.
 
-The capacity wake primitive:
+`end()` returns `this._pending.splice(0)` — not `this._pending` and then `this._pending = []`. `splice(0)` is atomic: it returns all items and empties the array in a single operation, preventing any window where items could be added between the return and the clear.
+
+For session capacity management, there's the capacity wake primitive:
 
 ```typescript
 // src/bridge/capacityWake.ts
+
 export function createCapacityWake(outerSignal: AbortSignal): CapacityWake {
   let wakeController = new AbortController()
 
@@ -461,98 +496,60 @@ export function createCapacityWake(outerSignal: AbortSignal): CapacityWake {
 
   function signal(): CapacitySignal {
     const merged = new AbortController()
-    // Merge outerSignal (shutdown) and wakeController.signal (capacity freed)
-    // Whichever fires first aborts the merged signal
-    ...
+    // Merge shutdown signal and capacity signal
+    // Whichever fires first, the merged signal aborts
+    outerSignal.addEventListener('abort', abort, { once: true })
+    wakeController.signal.addEventListener('abort', abort, { once: true })
     return { signal: merged.signal, cleanup }
   }
-
-  return { signal, wake }
 }
 ```
 
-This is the pattern for sleeping efficiently in a poll loop: don't busy-wait, sleep until either shutdown or capacity-freed, whichever comes first.
+The poll loop uses two intervals:
 
-**Startup latency** is where most interactive agent UX latency lives. The principle: fire every I/O operation that can possibly run in parallel before you need its result.
+```typescript
+// src/bridge/pollConfigDefaults.ts
 
-```python
-# Fire immediately at startup — don't await yet
-credential_future = prefetch_credentials()
-flags_future = initialize_feature_flags()
-registry_future = prefetch_tool_registry()
-
-# Do synchronous init work while I/O runs in parallel
-
-# Await only when the value is actually needed
-credentials = await credential_future
+const POLL_INTERVAL_MS_NOT_AT_CAPACITY = 2000      // actively seeking work
+const POLL_INTERVAL_MS_AT_CAPACITY = 600_000        // 10 minutes — just a liveness signal
 ```
 
-On macOS, keychain accesses and system config reads are synchronous subprocess calls that block 50–100ms each when serialized. Parallelizing them with module load time makes them nearly free.
+Not-at-capacity: poll every 2 seconds to pick up work quickly. At-capacity: poll every 10 minutes — not to pick up work (the transport handles that), but as a liveness signal to prevent the Redis key from expiring (TTL is 4 hours; 10-minute poll gives 24× headroom).
 
-**Token budget explains 80% of performance variance** in multi-agent evaluations (Google Research, BrowseComp 2025). The ceiling on your agent's performance is often not the model — it's how efficiently you're using the token budget you have.
-
-**What to change today:** Add a diminishing-returns detector to your agent loop. If the agent is generating less than a threshold amount of meaningful output per turn over several turns, stop and surface the situation to the user rather than continuing to consume tokens.
+**What to change today:** If your agent handles streaming messages or session bridging, implement a flush gate pattern before you need it. The bugs from interleaved messages during flush are difficult to reproduce and difficult to debug. The gate is simple enough to add proactively.
 
 ---
 
-## 9. Benchmarks: What the Numbers Actually Mean
+## What These 9 Patterns Have in Common
 
-Most benchmark comparisons in agent systems are made without accounting for:
-- The evaluation harness (the scaffolding often contributes more than the model)
-- The date (agent benchmarks move fast; a 2023 benchmark may measure a capability ceiling that was removed in 2024)
-- The task distribution (SWE-bench favors certain kinds of tasks; GAIA favors others)
-- The comparison baseline (human baselines vary dramatically by task type)
+Looking across them:
 
-A few anchors that are genuinely useful:
+**1. Architecture enforces constraints that prompts cannot.** The verification agent can't edit files because the tool isn't available — not because it was instructed not to. Permission defaults are fail-closed. Denial limits are hardcoded constants. Instructions drift; architecture holds.
 
-**GAIA human baseline: 92%.** This is the human ceiling on the GAIA benchmark (tool-augmented multi-step reasoning). The benchmark was designed to be "trivially easy for humans" — so hitting 92% of it is table stakes, not achievement.
+**2. Naming makes costs visible.** `DANGEROUS_uncachedSystemPromptSection`, `checkStatsigFeatureGate_CACHED_MAY_BE_STALE`, `_reason` as a required-but-unused parameter. The naming convention is the documentation. Engineers can't accidentally cache-break or cache-hit without the code making it obvious.
 
-**SWE-bench Verified: 81.42%** (Claude Opus 4.6, April 2026). SWE-bench Verified is a subset of SWE-bench curated for accurate ground truth. The 81.42% number means the model, with its scaffolding, resolves 81% of real GitHub issues. Devin's original 2024 baseline was 13.86% on the full SWE-bench.
+**3. Failure modes are explicit, not implicit.** The verification agent's system prompt names the two ways it fails. The denial circuit breaker has exact numeric thresholds from production incidents. The flush gate has a `deactivate()` path specifically for transport replacement. These aren't defensive programming — they're the result of things going wrong in production, being understood, and being fixed specifically.
 
-**WebArena: 61.7%** (IBM CUGA, Feb 2025). This benchmark tests agents on real web tasks — booking, form filling, navigation. 61.7% is the top agent score. Human performance is near 100%.
+**4. Fresh and resumed are always distinguished.** Swarm initialization, task IDs, session bridging — every stateful component explicitly handles both the fresh-start and the resume case. This is the difference between a system that works in demos and a system that works in production.
 
-**HumanEval: ~93%** (GPT-5.3 Codex, 2025–2026). HumanEval tests code generation on isolated function problems. 93% sounds impressive; HumanEval has known limitations (tests are incomplete, solutions can pass tests without being correct). SWE-bench is more meaningful for production coding agents.
-
-**The number that matters most for most teams isn't any of these.** It's the end-to-end success rate on your specific task distribution, measured by an independent verification layer, not by self-report.
-
----
-
-## What This Means for Your Agent
-
-Across all 9 dimensions, a pattern emerges:
-
-1. **Architecture beats model.** Scaffold gain (+8 pp on SWE-bench) is larger than many model upgrades. The coordinator/worker split reduces error amplification 4×. System prompt structure is a primary performance differentiator.
-
-2. **External feedback beats self-reflection.** +80% vs +1.8 pp. Build external verification loops, not internal review prompts.
-
-3. **Context is a budget, not a window.** 50K tokens is the practical limit regardless of the declared window. Compress, tier, and curate aggressively.
-
-4. **Security is not optional.** 73% of deployments are vulnerable. 83% of organizations plan deployment. 29% feel ready. The gap is real and the consequences are production-grade.
-
-5. **Single agent first.** 64% of sequential tasks, single-agent wins. Add agents when you have parallelizable work, not by default.
-
-6. **Circuit breakers everywhere.** 3 denial threshold. 3 failure threshold. 500 token diminishing-returns threshold. These numbers come from production incident data, not theory.
-
-The 73% first-year failure rate is not a mystery. It's the result of teams building agents that don't address these dimensions. The models are good enough. The architecture usually isn't.
+**5. Context placement is intentional.** CLAUDE.md in the user turn, git status in the system prompt, critical reminders in a separate injection field. Where context lands determines how reliably it's attended to. The middle of context is where information goes to be forgotten (Liu et al., Stanford 2024). Every piece of information has a deliberate placement.
 
 ---
 
 ## The Reference Library
 
-All 9 best-practice documents — with benchmark tables, implementation patterns, and source citations — are open source:
+These patterns are extracted and organized into an open-source reference library with audit checklists and skills for Claude Code, Cursor, Codex CLI, Gemini CLI, Windsurf, Aider, and Continue.dev:
 
-**[agent-loop-learning](https://github.com/sarkar-ai-taken/agent-loop-learning)**
+**[github.com/sarkar-ai-taken/agent-loop-learning](https://github.com/sarkar-ai-taken/agent-loop-learning)**
 
-Each document is structured for use as an audit checklist. Load it into any agent (Claude Code, Cursor, Codex CLI, Gemini CLI, Windsurf, Aider, Continue.dev) and run:
+Three slash commands available in any Claude Code session pointed at the repo:
 
 ```
-Review my agent against the best-practice docs. List every gap.
+/review-agent    → full audit against 9 dimensions with ✅/⚠️/❌ scorecard
+/improve-agent   → targeted improvement cards for a specific component
+/best-practices  → load a reference doc by topic keyword
 ```
-
-That's where most teams should start.
 
 ---
 
-*Compiled from production agentic system design patterns, peer-reviewed research, and the internals of Claude Code's open source codebase. April 2026.*
-
-*All benchmark numbers include primary source citations in the reference library linked above.*
+*All code excerpts are from the Claude Code source. All source paths reference the April 2026 codebase.*
