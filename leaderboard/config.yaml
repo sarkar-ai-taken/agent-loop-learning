@@ -1,0 +1,44 @@
+# agent-loop-learning leaderboard configuration
+# ===============================================
+# Edit this file to change model, discovery params, or output paths.
+# All relative paths are from the repo root.
+
+discovery:
+  topics:
+    - llm-agent
+    - ai-agent
+    - autonomous-agent
+    - agentic-ai
+    - claude-agent
+    - openai-agent
+  min_stars: 100
+  max_candidates: 20        # repos fetched; top_n make the final leaderboard
+  languages:
+    - Python
+    - TypeScript
+    - JavaScript
+  exclude_repos:
+    # Large framework monorepos — too broad to review as "agents"
+    - langchain-ai/langchain
+    - microsoft/autogen
+    - microsoft/semantic-kernel
+    - run-llama/llama_index
+    - hwchase17/langchain
+  skip_if_reviewed_within_days: 7   # don't re-review the same repo within a week
+
+model:
+  provider: ollama            # ollama | anthropic | openai | gemini
+  name: gemma4:27b            # local model; change to claude-sonnet-4-6, gpt-4o, etc.
+  endpoint: http://localhost:11434   # Ollama default
+  evaluated_by: "Gemma 4 27B (local, Mac Mini M4)"
+  context_limit: 100000       # max tokens to send (prompt + code context)
+  max_code_tokens: 30000      # max tokens of agent source code to include
+  temperature: 0.2            # low temp for consistent structured output
+
+leaderboard:
+  top_n: 10
+  reviews_dir: leaderboard/reviews
+  docs_dir: docs
+  repo_root: .
+  auto_push: true             # git commit + push after each run
+  commit_message: "chore: weekly leaderboard update {date}"

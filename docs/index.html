@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agent Loop Leaderboard</title>
+  <meta name="description" content="Top open-source AI agents reviewed weekly against 9 best-practice dimensions." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" />
+  <style>
+    /* ── Riva-matched design tokens ─────────────────────────────────────── */
+    :root {
+      --bg:           #0a0e14;
+      --bg-surface:   #0f1419;
+      --bg-card:      #141a22;
+      --bg-card-hover:#1a2230;
+      --bg-elevated:  #1c2433;
+      --text:         #d4dce8;
+      --text-sec:     #8899aa;
+      --text-dim:     #5c6e80;
+      --accent:       #4da4ff;
+      --accent-dim:   rgba(77,164,255,0.12);
+      --green:        #40d672;
+      --green-dim:    rgba(64,214,114,0.12);
+      --yellow:       #f0b429;
+      --yellow-dim:   rgba(240,180,41,0.12);
+      --red:          #f04e4e;
+      --red-dim:      rgba(240,78,78,0.12);
+      --purple:       #b48eff;
+      --border:       #1e2a3a;
+      --border-sub:   #162030;
+      --border-acc:   #243447;
+      --radius:       8px;
+      --radius-lg:    12px;
+      --radius-sm:    6px;
+      --shadow-sm:    0 1px 2px rgba(0,0,0,0.3);
+      --shadow-md:    0 4px 12px rgba(0,0,0,0.25);
+      --font:         'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono:    'JetBrains Mono', 'SF Mono', monospace;
+      --transition:   0.2s cubic-bezier(0.4,0,0.2,1);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 14px;
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* ── Layout ────────────────────────────────────────────────────────── */
+    .page { max-width: 1280px; margin: 0 auto; padding: 0 24px 60px; }
+
+    /* ── Header ─────────────────────────────────────────────────────────── */
+    header {
+      border-bottom: 1px solid var(--border);
+      padding: 20px 0 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .header-left { display: flex; align-items: center; gap: 14px; }
+    .logo {
+      width: 36px; height: 36px;
+      background: linear-gradient(135deg, var(--accent), var(--purple));
+      border-radius: 9px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 17px; font-weight: 800; color: #fff; flex-shrink: 0;
+    }
+    .header-title { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
+    .header-sub { font-size: 12px; color: var(--text-dim); font-family: var(--font-mono); margin-top: 1px; }
+    .header-links { display: flex; gap: 10px; flex-wrap: wrap; }
+    .header-link {
+      padding: 5px 13px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 12px; font-weight: 500;
+      color: var(--text-sec);
+      transition: all var(--transition);
+      background: var(--bg-card);
+    }
+    .header-link:hover {
+      color: var(--accent); border-color: rgba(77,164,255,0.3);
+      background: var(--accent-dim); text-decoration: none;
+    }
+
+    /* ── Hero ────────────────────────────────────────────────────────────── */
+    .hero {
+      padding: 36px 0 28px;
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      justify-content: space-between;
+    }
+    .hero-text h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.2; }
+    .hero-text h1 span { color: var(--accent); }
+    .hero-text p { color: var(--text-sec); margin-top: 8px; max-width: 560px; font-size: 14px; }
+
+    /* ── Stats row ───────────────────────────────────────────────────────── */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 28px;
+    }
+    @media(max-width: 640px) { .stats-row { grid-template-columns: repeat(2, 1fr); } }
+    .stat-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 16px 18px;
+      position: relative;
+      overflow: hidden;
+      transition: border-color var(--transition);
+    }
+    .stat-card::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0;
+      height: 2px; opacity: 0.6;
+    }
+    .stat-card:nth-child(1)::before { background: linear-gradient(90deg, var(--accent), var(--purple)); }
+    .stat-card:nth-child(2)::before { background: linear-gradient(90deg, var(--green), var(--accent)); }
+    .stat-card:nth-child(3)::before { background: linear-gradient(90deg, var(--yellow), var(--orange, #e68a3a)); }
+    .stat-card:nth-child(4)::before { background: linear-gradient(90deg, var(--purple), var(--accent)); }
+    .stat-card:hover { border-color: var(--border-acc); }
+    .stat-value { font-size: 28px; font-weight: 700; font-family: var(--font-mono); }
+    .stat-label { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600; margin-top: 3px; }
+
+    /* ── Info banner ──────────────────────────────────────────────────────── */
+    .info-banner {
+      background: var(--accent-dim);
+      border: 1px solid rgba(77,164,255,0.2);
+      border-radius: var(--radius);
+      padding: 12px 16px;
+      font-size: 13px;
+      color: var(--text-sec);
+      margin-bottom: 24px;
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+    .info-banner b { color: var(--accent); }
+
+    /* ── Leaderboard table ───────────────────────────────────────────────── */
+    .leaderboard-wrap {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      margin-bottom: 24px;
+    }
+    .leaderboard-header {
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .leaderboard-title { font-size: 14px; font-weight: 600; }
+    .last-updated { font-size: 11px; font-family: var(--font-mono); color: var(--text-dim); }
+
+    table { width: 100%; border-collapse: separate; border-spacing: 0; }
+    th {
+      padding: 10px 16px;
+      background: var(--bg-surface);
+      color: var(--text-dim);
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    td {
+      padding: 11px 16px;
+      border-bottom: 1px solid var(--border-sub);
+      font-size: 13px;
+      vertical-align: middle;
+      transition: background var(--transition);
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: var(--bg-card-hover); cursor: pointer; }
+
+    .rank-cell {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text-dim);
+      width: 40px;
+      text-align: center;
+    }
+    .rank-1 { color: #ffd700; font-weight: 700; }
+    .rank-2 { color: #c0c0c0; font-weight: 600; }
+    .rank-3 { color: #cd7f32; font-weight: 600; }
+
+    .agent-name { font-weight: 600; color: var(--text); }
+    .agent-name a { color: inherit; }
+    .agent-name a:hover { color: var(--accent); }
+    .agent-desc { font-size: 11.5px; color: var(--text-dim); margin-top: 2px; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .stars-cell { font-family: var(--font-mono); font-size: 12px; color: var(--text-sec); white-space: nowrap; }
+
+    /* Score bar: 8 colored segments */
+    .score-bar { display: flex; gap: 2px; align-items: center; }
+    .score-seg {
+      width: 14px; height: 20px; border-radius: 3px;
+      transition: transform 0.15s;
+    }
+    .score-seg:hover { transform: scaleY(1.15); }
+    .score-seg.solid   { background: var(--green); }
+    .score-seg.partial { background: var(--yellow); }
+    .score-seg.gap     { background: var(--red); }
+    .score-seg.unknown { background: var(--border); }
+    .score-text { font-family: var(--font-mono); font-size: 11px; color: var(--text-sec); margin-left: 8px; white-space: nowrap; }
+
+    .gap-cell { font-size: 12px; color: var(--text-sec); max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .eval-badge {
+      font-size: 10.5px;
+      font-family: var(--font-mono);
+      padding: 2px 8px;
+      border-radius: 10px;
+      background: var(--accent-dim);
+      color: var(--accent);
+      white-space: nowrap;
+    }
+    .date-cell { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); white-space: nowrap; }
+
+    /* ── Expandable row detail ─────────────────────────────────────────── */
+    .detail-row { display: none; }
+    .detail-row.open { display: table-row; }
+    .detail-cell {
+      background: var(--bg-surface);
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border-sub);
+    }
+    .detail-summary { color: var(--text-sec); font-size: 13px; line-height: 1.6; margin-bottom: 12px; }
+    .detail-links { display: flex; gap: 10px; flex-wrap: wrap; }
+    .detail-link {
+      padding: 5px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      background: var(--bg-card);
+      color: var(--text-sec);
+      transition: all var(--transition);
+    }
+    .detail-link:hover { color: var(--accent); border-color: rgba(77,164,255,0.3); text-decoration: none; }
+    .improvements { margin-top: 10px; }
+    .improvements h4 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-dim); margin-bottom: 6px; }
+    .improvements ul { list-style: none; display: flex; flex-direction: column; gap: 4px; }
+    .improvements li { font-size: 12.5px; color: var(--text-sec); padding-left: 14px; position: relative; }
+    .improvements li::before { content: '→'; position: absolute; left: 0; color: var(--red); }
+
+    /* ── Empty state ──────────────────────────────────────────────────────── */
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text-dim);
+    }
+    .empty-icon { font-size: 40px; margin-bottom: 12px; opacity: 0.4; }
+    .empty-title { font-size: 16px; font-weight: 600; color: var(--text-sec); margin-bottom: 8px; }
+    .empty-code {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px 16px;
+      margin-top: 12px;
+      color: var(--green);
+      text-align: left;
+    }
+
+    /* ── How it works section ────────────────────────────────────────────── */
+    .section { margin-bottom: 28px; }
+    .section-title {
+      font-size: 13px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--text-dim);
+      margin-bottom: 14px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .dimensions-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 10px;
+    }
+    .dim-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 14px;
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      transition: border-color var(--transition);
+    }
+    .dim-card:hover { border-color: var(--border-acc); }
+    .dim-num {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--accent);
+      background: var(--accent-dim);
+      border-radius: 4px;
+      padding: 2px 6px;
+      flex-shrink: 0;
+    }
+    .dim-name { font-size: 13px; font-weight: 600; }
+    .dim-desc { font-size: 11.5px; color: var(--text-dim); margin-top: 2px; }
+
+    /* ── Contribute banner ───────────────────────────────────────────────── */
+    .contribute-banner {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 20px 24px;
+      display: flex;
+      gap: 20px;
+      align-items: flex-start;
+      justify-content: space-between;
+      flex-wrap: wrap;
+    }
+    .contribute-text h3 { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+    .contribute-text p { font-size: 13px; color: var(--text-sec); max-width: 500px; }
+    .contribute-code {
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px 14px;
+      color: var(--green);
+      white-space: pre;
+      flex-shrink: 0;
+    }
+
+    /* ── Footer ──────────────────────────────────────────────────────────── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 20px 0;
+      text-align: center;
+      font-size: 12px;
+      color: var(--text-dim);
+    }
+    footer a { color: var(--text-dim); }
+    footer a:hover { color: var(--accent); }
+
+    /* ── Loading ──────────────────────────────────────────────────────────── */
+    .loading { text-align: center; padding: 40px; color: var(--text-dim); font-family: var(--font-mono); font-size: 13px; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- Header -->
+  <header>
+    <div class="header-left">
+      <div class="logo">⬡</div>
+      <div>
+        <div class="header-title">Agent Loop Leaderboard</div>
+        <div class="header-sub">by agent-loop-learning</div>
+      </div>
+    </div>
+    <div class="header-links">
+      <a href="https://github.com/sarkar-ai-taken/agent-loop-learning" class="header-link">GitHub</a>
+      <a href="https://github.com/sarkar-ai-taken/agent-loop-learning/tree/main/leaderboard" class="header-link">Leaderboard Repo</a>
+      <a href="https://github.com/sarkar-ai-taken/agent-loop-learning/tree/main/best-practices" class="header-link">Best Practices</a>
+      <a href="https://github.com/sarkar-ai-taken/agent-loop-learning#contributing-a-review" class="header-link">Contribute</a>
+    </div>
+  </header>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="hero-text">
+      <h1>Top open-source <span>AI agents</span>, ranked.</h1>
+      <p>Reviewed weekly against 9 best-practice dimensions covering orchestration, memory, tool design, security, and more. Evaluated locally — no cloud costs, fully transparent.</p>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-row" id="stats-row">
+    <div class="stat-card"><div class="stat-value" id="stat-total">—</div><div class="stat-label">Agents Reviewed</div></div>
+    <div class="stat-card"><div class="stat-value" id="stat-model">—</div><div class="stat-label">Evaluation Model</div></div>
+    <div class="stat-card"><div class="stat-value" id="stat-updated">—</div><div class="stat-label">Last Updated</div></div>
+    <div class="stat-card"><div class="stat-value" id="stat-dims" style="color:var(--accent)">8</div><div class="stat-label">Dimensions Scored</div></div>
+  </div>
+
+  <!-- Info banner -->
+  <div class="info-banner">
+    <span>ℹ️</span>
+    <span>Reviews are produced by <b id="model-name">Gemma 4 27B (local, Mac Mini M4)</b> running locally — no API costs. Model is clearly labeled on every review. Have tokens? <a href="https://github.com/sarkar-ai-taken/agent-loop-learning#contributing-a-review">Contribute a Claude or GPT-4 review →</a></span>
+  </div>
+
+  <!-- Leaderboard -->
+  <div class="leaderboard-wrap">
+    <div class="leaderboard-header">
+      <div class="leaderboard-title">Current Rankings</div>
+      <div class="last-updated" id="last-updated">Loading...</div>
+    </div>
+    <div id="table-container">
+      <div class="loading">Loading leaderboard data...</div>
+    </div>
+  </div>
+
+  <!-- How it works -->
+  <div class="section">
+    <div class="section-title">How scoring works</div>
+    <div class="dimensions-grid" id="dimensions-grid">
+      <!-- Populated by JS -->
+    </div>
+  </div>
+
+  <!-- Contribute -->
+  <div class="contribute-banner">
+    <div class="contribute-text">
+      <h3>Contribute a review</h3>
+      <p>Have Anthropic, OpenAI, or Gemini API credits? Run the leaderboard with your model and submit a PR. All reviews are labeled with the model that produced them.</p>
+    </div>
+    <pre class="contribute-code"># Review with Claude
+export ANTHROPIC_API_KEY=sk-...
+# Edit config.yaml: provider: anthropic
+python leaderboard/run.py \
+  --repo owner/repo --dry-run</pre>
+  </div>
+
+</div><!-- /page -->
+
+<footer>
+  <p>
+    <a href="https://github.com/sarkar-ai-taken/agent-loop-learning">agent-loop-learning</a> ·
+    MIT License · Scores are model-generated and best-effort
+  </p>
+</footer>
+
+<script>
+const DIMENSIONS = [
+  { num: "01", name: "Multi-agent orchestration", desc: "Coordinator/worker split, concurrency, error amplification patterns" },
+  { num: "02", name: "Worker prompting", desc: "Prompt structure, scaffold design, stop conditions" },
+  { num: "03", name: "Context & memory", desc: "6-layer context pipeline, semantic/procedural memory tiers" },
+  { num: "04", name: "Tool design", desc: "Security classification, streaming, 6 security properties" },
+  { num: "05", name: "Verification & testing", desc: "Independent verification workers, VCR fixtures, forced acknowledgment" },
+  { num: "06", name: "Security & permissions", desc: "Injection defense, circuit breakers, Zero Trust model" },
+  { num: "07", name: "Prompt engineering", desc: "Cache boundaries, prompt anchors, stable/dynamic split" },
+  { num: "08", name: "Performance & startup", desc: "Circuit breakers, diminishing-returns detector, startup profiling" },
+];
+
+const DIM_KEYS = ["Multi-agent orchestration","Worker prompting","Context & memory","Tool design","Verification & testing","Security & permissions","Prompt engineering","Performance & startup"];
+
+function formatDate(iso) {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  } catch { return iso.slice(0,10); }
+}
+
+function formatStars(n) {
+  if (!n) return "—";
+  return n >= 1000 ? (n/1000).toFixed(1) + "k★" : n + "★";
+}
+
+function scoreSeg(dim, scores) {
+  const s = scores?.[dim] || "unknown";
+  return `<div class="score-seg ${s}" title="${dim}: ${s}"></div>`;
+}
+
+function scoreBar(scores) {
+  const segs = DIM_KEYS.map(d => scoreSeg(d, scores)).join("");
+  const solid = Object.values(scores||{}).filter(v=>v==="solid").length;
+  const partial = Object.values(scores||{}).filter(v=>v==="partial").length;
+  const gap = Object.values(scores||{}).filter(v=>v==="gap").length;
+  return `<div class="score-bar">${segs}<span class="score-text">${solid}✅ ${partial}⚠️ ${gap}❌</span></div>`;
+}
+
+function rankClass(i) {
+  return i === 1 ? "rank-1" : i === 2 ? "rank-2" : i === 3 ? "rank-3" : "";
+}
+
+function topGap(scores) {
+  for (const dim of DIM_KEYS) {
+    if (scores?.[dim] === "gap") return dim;
+  }
+  for (const dim of DIM_KEYS) {
+    if (scores?.[dim] === "partial") return dim;
+  }
+  return "—";
+}
+
+function renderTable(agents) {
+  if (!agents || agents.length === 0) {
+    return `<div class="empty-state">
+      <div class="empty-icon">◎</div>
+      <div class="empty-title">No reviews yet</div>
+      <p>Run the leaderboard to populate this page.</p>
+      <div class="empty-code">cd agent-loop-learning\npython leaderboard/run.py</div>
+    </div>`;
+  }
+
+  const rows = agents.map((a, idx) => {
+    const i = a.rank || idx + 1;
+    const slug = `${a.owner}-${a.repo}`;
+    const gap = topGap(a.scores);
+    return `
+    <tr onclick="toggleDetail('detail-${slug}')">
+      <td class="rank-cell ${rankClass(i)}">${i === 1 ? "🥇" : i === 2 ? "🥈" : i === 3 ? "🥉" : i}</td>
+      <td>
+        <div class="agent-name"><a href="${a.url}" target="_blank" onclick="e=>e.stopPropagation()">${a.repo}</a></div>
+        <div class="agent-desc">${a.description || ""}</div>
+      </td>
+      <td class="stars-cell">${formatStars(a.stars)}</td>
+      <td>${scoreBar(a.scores)}</td>
+      <td class="gap-cell" title="${gap}">${gap}</td>
+      <td><span class="eval-badge">${(a.evaluated_by||"").split("(")[0].trim()}</span></td>
+      <td class="date-cell">${formatDate(a.reviewed_at)}</td>
+    </tr>
+    <tr class="detail-row" id="detail-${slug}">
+      <td colspan="7" class="detail-cell">
+        ${a.summary ? `<div class="detail-summary">${a.summary}</div>` : ""}
+        ${(a.top_improvements||[]).length > 0 ? `
+        <div class="improvements">
+          <h4>Top improvements</h4>
+          <ul>${a.top_improvements.map(imp => `<li>${imp}</li>`).join("")}</ul>
+        </div>` : ""}
+        <div class="detail-links" style="margin-top:12px">
+          <a href="${a.review_url || `https://github.com/sarkar-ai-taken/agent-loop-learning/blob/main/leaderboard/reviews/${slug}.md`}" target="_blank" class="detail-link">Full review →</a>
+          <a href="${a.url}" target="_blank" class="detail-link">GitHub repo →</a>
+        </div>
+      </td>
+    </tr>`;
+  }).join("");
+
+  return `<table>
+    <thead><tr>
+      <th style="width:44px">#</th>
+      <th>Agent</th>
+      <th>Stars</th>
+      <th>Score</th>
+      <th>Top Gap</th>
+      <th>Evaluated By</th>
+      <th>Reviewed</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+function toggleDetail(id) {
+  const row = document.getElementById(id);
+  if (row) row.classList.toggle("open");
+}
+
+function renderDimensions() {
+  const grid = document.getElementById("dimensions-grid");
+  if (!grid) return;
+  grid.innerHTML = DIMENSIONS.map(d => `
+    <div class="dim-card">
+      <div class="dim-num">${d.num}</div>
+      <div>
+        <div class="dim-name">${d.name}</div>
+        <div class="dim-desc">${d.desc}</div>
+      </div>
+    </div>`).join("");
+}
+
+async function loadData() {
+  try {
+    const resp = await fetch("./agent-data.json");
+    if (!resp.ok) throw new Error("agent-data.json not found");
+    const data = await resp.json();
+
+    // Stats
+    document.getElementById("stat-total").textContent = data.total_reviewed || "0";
+    const modelShort = (data.evaluated_by_default || "Local").split(" ").slice(0,2).join(" ");
+    document.getElementById("stat-model").textContent = modelShort;
+    document.getElementById("model-name").textContent = data.evaluated_by_default || "Local model";
+    document.getElementById("stat-updated").textContent = data.updated_at ? formatDate(data.updated_at) : "—";
+    document.getElementById("last-updated").textContent = data.updated_at
+      ? `Updated ${formatDate(data.updated_at)}`
+      : "Not yet populated";
+
+    // Table
+    document.getElementById("table-container").innerHTML = renderTable(data.agents || []);
+  } catch (e) {
+    document.getElementById("table-container").innerHTML = `<div class="empty-state">
+      <div class="empty-icon">◎</div>
+      <div class="empty-title">No reviews yet</div>
+      <p>Run the leaderboard to populate this page.</p>
+      <div class="empty-code">cd agent-loop-learning\npython leaderboard/run.py</div>
+    </div>`;
+    document.getElementById("last-updated").textContent = "Not yet populated";
+    document.getElementById("stat-total").textContent = "0";
+    document.getElementById("stat-model").textContent = "Gemma 4";
+    document.getElementById("stat-updated").textContent = "—";
+  }
+}
+
+renderDimensions();
+loadData();
+</script>
+</body>
+</html>
